@@ -65,7 +65,14 @@ MSfiles_df = MSfiles %>% filter(endsWith(File_Name,".d") & grepl("NP",File_Name)
 #Save final version of plate map file (w/ added MS file names)
 #final_pmf = merge(temp_pmf,MSfiles_df,by.x = `Sample name`,by.y = "Sample_Name")
 temp_pmf$`MS file name` = MSfiles_df$File_Name
-final_pmf = temp_pmf
+empty_pmf = blank_pmf %>% filter(is.na(`Sample name`))
+final_pmf = rbind(temp_pmf,empty_pmf)
+final_pmf = final_pmf %>% separate_wider_regex(`Well location`,
+                                    patterns = c(Well_Letter = "[A-Z]","",Well_Num = "[0-9]{1,}"),
+                                    cols_remove = FALSE) %>%
+                          mutate(Well_Num = as.numeric(Well_Num)) %>%
+                          arrange(Well_Num, Well_Letter) %>%
+                          dplyr::select(-c("Well_Num","Well_Letter"))
 
 #Output to excel file
 output_path = sub("(.*).xlsx","\\1_wMSfiles.xlsx",arg_pmf)
