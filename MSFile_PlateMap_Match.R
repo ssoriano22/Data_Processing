@@ -24,12 +24,12 @@ cat("Enter path to file with MS file names: ")
 arg_fn = readLines(con = "stdin", n = 1)
 #For in-R testing:
 #arg_fn = "~/Code/XT_Comparison/test_XT_MSfiles/" #For creating fn list in R
-#arg_fn = "~/Code/XT_Comparison/filenames.txt" #For reading in fn list txt file
+# arg_fn = "~/Code/XT_Comparison/20240207_Murine_Liver_Expl_Plasma/filenames.txt" #For reading in fn list txt file
 #For cmd line interface:
 cat("Enter path to plate map file: ")
 arg_pmf = readLines(con = "stdin", n = 1)
 #For in-R testing:
-#arg_pmf = "~/Code/XT_Comparison/PlateMap_01Feb2024_MurineLiverExplPlasma_20240201_0745_1L0221427_a.xlsx"
+# arg_pmf = "~/Code/XT_Comparison/20240207_Murine_Liver_Expl_Plasma/PlateMap_01Feb2024_MurineLiverExplPlasma_20240201_0745_1L0221427_a_blank.xlsx"
 
 # User Input Option 2 - command line w/ arguments
 # args = commandArgs(trailingOnly = TRUE)
@@ -63,16 +63,38 @@ MSfiles_df = MSfiles %>% filter(endsWith(File_Name,".d") & grepl("NP",File_Name)
                           arrange(NP, Volume, Sample_Name)
 
 #Save final version of plate map file (w/ added MS file names)
-#final_pmf = merge(temp_pmf,MSfiles_df,by.x = `Sample name`,by.y = "Sample_Name")
 temp_pmf$`MS file name` = MSfiles_df$File_Name
 empty_pmf = blank_pmf %>% filter(is.na(`Sample name`))
-final_pmf = rbind(temp_pmf,empty_pmf)
-final_pmf = final_pmf %>% separate_wider_regex(`Well location`,
+temp2_pmf = rbind(temp_pmf,empty_pmf)
+temp3_pmf = temp2_pmf %>% separate_wider_regex(`Well location`,
                                     patterns = c(Well_Letter = "[A-Z]","",Well_Num = "[0-9]{1,}"),
                                     cols_remove = FALSE) %>%
                           mutate(Well_Num = as.numeric(Well_Num)) %>%
                           arrange(Well_Num, Well_Letter) %>%
                           dplyr::select(-c("Well_Num","Well_Letter"))
+
+#Add process ctrl files - only keep one file per control w/ highest final numeric in file name
+MSfiles_ctrl_df = MSfiles %>% filter(grepl("ctrl",File_Name)) %>%
+                              filter(grepl("PC",File_Name)) %>%
+                              mutate(CTRL_Type = sub(".*_(PC[0-9]).*$","\\1",File_Name),
+                                     Sort_Numeric = sub(".*_(.*).d$","\\1",File_Name)) %>%
+                              group_by(CTRL_Type) %>%
+                              top_n(1, Sort_Numeric) %>%
+                              arrange(CTRL_Type)
+
+ctrl_pmf = temp3_pmf %>% filter(grepl("Process Control",Control)) %>% dplyr::select(c("MS file name","Control"))
+ctrl_pmf$`MS file name` = MSfiles_ctrl_df$File_Name
+
+#Assembled final df
+final_pmf = temp3_pmf %>% left_join(ctrl_pmf, by = "Control") %>%
+                          mutate(`MS file name.x` = ifelse(!is.na(`MS file name.x`),
+                                                           `MS file name.x`,
+                                                           ifelse(grepl("Process Control",Control),
+                                                                  `MS file name.y`,
+                                                                  NA))) %>%
+                          dplyr::select(-c("MS file name.y"))
+
+colnames(final_pmf)[colnames(final_pmf) == "MS file name.x"] = "MS file name"
 
 #Output to excel file
 output_path = sub("(.*).xlsx","\\1_wMSfiles.xlsx",arg_pmf)
